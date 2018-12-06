@@ -1,0 +1,15 @@
+- name: install httpd
+  package:
+    name: httpd
+    state: latest
+
+- name: enable httpd
+  service:
+    name: httpd
+    enabled: True
+
+- name: copy the vhost+proxy config
+  template:
+    src: gravity.conf
+    dest: /etc/httpd/conf.d/gravity.conf
+  notify: restart_httpd

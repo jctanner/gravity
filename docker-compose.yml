@@ -1,0 +1,77 @@
+version: '3.3'
+services:
+  rabbit:
+    hostname: rabbit
+    image: rabbitmq:latest
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=mypass
+    ports:
+      - "5673:5672"
+    networks:
+      gravity_nw:
+        ipv4_address: 172.20.0.2
+
+  flaskapp:
+    hostname: flaskapp
+    image: flaskapp
+    build:
+      context: .
+      dockerfile: flaskapp.Dockerfile
+    links:
+      - rabbit
+    depends_on:
+      - rabbit
+      - mongo
+    networks:
+      gravity_nw:
+        ipv4_address: 172.20.0.4
+    environment:
+      GRAVITY_VAR_DIR: /var/cache/gravity
+      PYTHONUNBUFFERED: 1
+      CELERY_BROKER_URL: pyamqp://admin:mypass@rabbit:5672
+      CELERY_RESULT_BACKEND: mongodb://mongo:27017
+      CELERY_MONGODB_BACKEND_DATABASE: gravity
+      CELERY_MONGODB_BACKEND_COLLECTION: results
+    volumes:
+      - /var/cache/gravity:/var/cache/gravity
+
+  worker:
+    hostname: worker
+    image: worker
+    build:
+      context: .
+      dockerfile: worker.Dockerfile
+    links:
+      - rabbit
+    depends_on:
+      - rabbit
+      - mongo
+    networks:
+      gravity_nw:
+        ipv4_address: 172.20.0.5
+    environment:
+      GRAVITY_VAR_DIR: /var/cache/gravity
+      PYTHONUNBUFFERED: 1
+      CELERY_BROKER_URL: pyamqp://admin:mypass@rabbit:5672
+      CELERY_RESULT_BACKEND: mongodb://mongo:27017
+      CELERY_MONGODB_BACKEND_DATABASE: gravity
+      CELERY_MONGODB_BACKEND_COLLECTION: results
+    volumes:
+      - /var/cache/gravity:/var/cache/gravity
+
+  mongo:
+    hostname: mongo
+    image: mongo:latest
+    ports:
+      - "27018:27017"
+    networks:
+      gravity_nw:
+        ipv4_address: 172.20.0.3
+
+networks:
+  gravity_nw:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

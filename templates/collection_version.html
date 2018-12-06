@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<h1>{{ collection['namespace'] }} {{ collection['name'] }} {{ collection['version'] }}</h1>
+
+<p>
+{% for fn in collection['files'] %}
+	{{ fn }} <br>
+	{% if fn in issues %}
+		{% for issue in issues[fn] %}
+			{{ issue }}
+		{% endfor %}
+	{% else %}
+	{% endif %}
+{% endfor %}
+</p>
+
+</body>
+</html> 

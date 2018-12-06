@@ -1,0 +1,6 @@
+celery
+beautifulsoup4
+pymongo
+requests
+six
+Flask

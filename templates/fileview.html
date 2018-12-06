@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<h1>{{ thispath }}</h1>
+
+<p>
+{% for k,v in filenames.items()|sort(attribute='0') %}
+    <a href="{{ v['fullpath'] }}">{{ k }}</a> <br>
+{% endfor %}
+</p>
+
+</body>
+</html> 
