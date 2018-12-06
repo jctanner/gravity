@@ -5,13 +5,26 @@
 <h1>collections</h1>
 
 <p>
+<table style="width:75%">
+    <tr>
+        <th align="left">collection</th>
+        <th align="left">versions</th>
+        <th align="left">issues</th>
+        <th align="left">downloads</th>
+    </tr>
 {% for k,v in collections.items()|sort(attribute='0') %}
-        {{ k }}
+    <tr>
+        <td>{{ k }}</td>
+        <td>
 	{% for version in v['versions'] %}
-		<a href={{ v['url'] + '/' + version }}>{{ version }} </a>
+		<a href={{ v['url'] + '/' + version }}>{{ version }}</a>
 	{% endfor %}
-	<br>
+        </td>
+        <td></td>
+        <td></td>
+    </tr>
 {% endfor %}
+</table>
 </p>
 
 </body>
