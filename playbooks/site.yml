@@ -3,3 +3,4 @@
     - geerlingguy.epel
     - geerlingguy.docker
     - httpd
+    - rpm_builder

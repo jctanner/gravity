@@ -1,0 +1,15 @@
+- set_facts:
+    packages:
+      - ruby-devel
+      - gcc 
+      - make
+      - rpm-build
+      - libffi-devel
+
+- name: install build deps
+  yum:
+    name: {{ packages }}
+    state: present
+
+- name: install fpm
+  shell: which fpm || gem install --no-ri --no-rdoc fpm
