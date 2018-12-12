@@ -4,7 +4,7 @@ rpm -e --nodeps ansible
 yum clean all
 yum -y install ansible
 
-COLS="ansible_utilities_helper ansible_utilities_logic ansible_system ansible_files ansible_commands"
+COLS="ansible_utilities_helper ansible_utilities_logic ansible_system ansible_files ansible_commands ansible_packaging_os"
 for COL in $COLS; do
 	rpm -q $COL && rpm -e --nodeps $COL
 	yum -y install $COL

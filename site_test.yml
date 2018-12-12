@@ -2,3 +2,11 @@
   gather_facts: Fasel
   tasks:
     - shell: whoami
+    - copy: 
+        dest: /tmp/test.txt
+        content: "foobar"
+    - stat:
+        path: /tmp/test.txt
+    - package:
+        name: sos
+        state: present

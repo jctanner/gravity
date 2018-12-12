@@ -154,6 +154,7 @@ def build_collections():
             collections[dirn]['version'] = eversion
             collections[dirn]['modules'] = []
             collections[dirn]['module_utils'] = []
+            collections[dirn]['docs_fragments'] = []
 
         for fn in files:
             logger.info(fn)
@@ -224,7 +225,10 @@ def build_collections():
                     #if 'ipa.documentation' in fragments:
                     #    import epdb; epdb.st()
 
-                collections[dirn]['docs_fragments'] = fragments
+                if fragments is not None:
+                    collections[dirn]['docs_fragments'] += fragments
+                    collections[dirn]['docs_fragments'] = \
+                        sorted(set(collections[dirn]['docs_fragments']))
 
         # store the meta ...
         jf = os.path.join(metadir, 'ansible-' + eversion + '-meta.json')
@@ -298,6 +302,7 @@ def build_rpms():
     releasedir = os.path.join(VARDIR, 'releases')
     tarballs = glob.glob('%s/*.tar.gz' % releasedir)
     tarballs = sorted(tarballs)
+
     for tb in tarballs:
         tbbn = os.path.basename(tb)
         edir = tbbn.replace('.tar.gz', '')
@@ -358,6 +363,7 @@ def build_rpms():
                     sys.exit(rc)
 
     return {}
+
 
 def build_repodata():
     repodir = '/var/cache/gravity/repos/rpm'
