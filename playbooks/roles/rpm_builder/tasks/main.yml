@@ -1,4 +1,4 @@
-- set_facts:
+- set_fact:
     packages:
       - ruby-devel
       - gcc 
@@ -8,7 +8,7 @@
 
 - name: install build deps
   yum:
-    name: {{ packages }}
+    name: "{{ packages|join(',') }}"
     state: present
 
 - name: install fpm

@@ -40,7 +40,7 @@ setenforce 0
 
 SCRIPT
 
-ENV['VAGRANT_DEFAULT_PROVIDER'] = 'virtualbox'
+ENV['VAGRANT_DEFAULT_PROVIDER'] = 'libvirt'
 
 Vagrant.configure("2") do |config|
   config.vm.box = "centos/7"
@@ -52,6 +52,14 @@ Vagrant.configure("2") do |config|
   config.hostmanager.ignore_private_ip = false
   config.hostmanager.include_offline = true
   config.vm.network "private_network", ip: "192.168.10.190"
-  config.vm.synced_folder ".", "/vagrant", type: "nfs"
+  #config.vm.synced_folder ".", "/vagrant", type: "nfs"
+  #config.vm.synced_folder ".", "/vagrant", type: "nfs", nfs_udp: true
+  config.vm.synced_folder ".", "/vagrant", type: "nfs", nfs_udp: false
   config.vm.provision "shell", inline: $script
+
+  config.vm.provider :libvirt do |libvirt|
+    libvirt.cpus = 2
+    libvirt.memory = 2048
+  end
+
 end
