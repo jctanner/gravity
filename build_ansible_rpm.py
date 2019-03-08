@@ -29,6 +29,7 @@ MODULE_UTIL_WHITELIST = [
     'module_utils/__init__.py',
     'module_utils/common',
     'module_utils/compat',
+    'module_utils/distro',
     'module_utils/facts',
     'module_utils/parsing',
     '_text',
@@ -46,8 +47,12 @@ def main():
     parser.add_argument('--noclean', action='store_true')
     args = parser.parse_args()
 
-    src_repo = 'https://github.com/jctanner/ansible'
-    src_branch = 'MAZER_DEMO_BRANCH'
+
+    #src_repo = 'https://github.com/jctanner/ansible'
+    #src_branch = 'MAZER_DEMO_BRANCH'
+    src_repo = 'https://github.com/nitzmahone/ansible.git'
+    src_branch = 'collection_content_load'
+
     src_dir = '/tmp/ansible.mazer.checkout'
     dst_dir = '/tmp/ansible.mazer.build'
 
@@ -61,7 +66,8 @@ def main():
     shutil.copytree(src_dir, dst_dir)
 
     logger.info('cleaning out fragments')
-    mdfd = os.path.join(dst_dir, 'lib', 'ansible', 'utils', 'module_docs_fragments')
+    #mdfd = os.path.join(dst_dir, 'lib', 'ansible', 'utils', 'module_docs_fragments')
+    mdfd = os.path.join(dst_dir, 'lib', 'ansible', 'plugins', 'doc_fragments')
     fragments = find(mdfd)
     fragments = [x.strip() for x in fragments if x.strip()]
     for ff in fragments:
@@ -124,10 +130,12 @@ def main():
         make('rpm', _cwd=dst_dir)
     except Exception as e:
         print(e.stdout)
+        print(e.stderr)
         sys.exit(1)
 
     logger.info('cleaning out old repo metadata')
-    repodir = '/var/cache/gravity/repos/rpm'
+    #repodir = '/var/cache/gravity/repos/rpm'
+    repodir = 'cache/repos/rpm'
     repodata_dir = os.path.join(repodir, 'repodata')
     if os.path.exists(repodata_dir):
         shutil.rmtree(repodata_dir)

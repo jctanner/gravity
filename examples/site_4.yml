@@ -1,0 +1,8 @@
+# what about debug?
+- hosts: localhost
+  connection: local
+  gather_facts: False
+  collections:
+  - builtins.system
+  tasks:
+    - debug: msg="foobar"

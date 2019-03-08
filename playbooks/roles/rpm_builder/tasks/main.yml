@@ -4,6 +4,7 @@
       - gcc 
       - make
       - rpm-build
+      - createrepo
       - libffi-devel
 
 - name: install build deps

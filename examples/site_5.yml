@@ -1,0 +1,10 @@
+# synthetic collections? oh my.
+- hosts: localhost
+  connection: local
+  gather_facts: False
+  collections:
+  - ansible.core #synthetic collection
+  - builtins.system
+  tasks:
+    - debug: msg="foobar"
+    - ansible.core.debug: msg="foobar"

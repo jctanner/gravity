@@ -1,0 +1,6 @@
+# where did my ping go?
+- hosts: localhost
+  connection: local
+  gather_facts: False
+  tasks:
+    - ping:

@@ -1,0 +1,6 @@
+# oh, there's my ping!
+- hosts: localhost
+  connection: local
+  gather_facts: False
+  tasks:
+    - builtins.system.ping:

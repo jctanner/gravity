@@ -4,3 +4,6 @@ pymongo
 requests
 six
 Flask
+logzero
+PyYAML
+sh

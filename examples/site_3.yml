@@ -1,0 +1,8 @@
+# well that's a nicer shortcut
+- hosts: localhost
+  connection: local
+  gather_facts: False
+  collections:
+  - builtins.system
+  tasks:
+    - ping:
