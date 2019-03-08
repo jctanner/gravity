@@ -17,3 +17,6 @@ for FN in $FILENAMES; do
         curl -o $FN https://raw.githubusercontent.com/jctanner/gravity/master/examples/$FN
     fi
 done
+
+# now run each playbook like ...
+#   ansible-playbook -i 'localhost,' site_X.yml
