@@ -421,7 +421,7 @@ def _assemble_collections(collections, refresh=False):
     if refresh and os.path.exists(colbasedir):
         shutil.rmtree(colbasedir)
 
-    # create the -versioned- collections ...
+    # create the collections ...
     for k,v in collections.items():
         if k == '':
             continue
@@ -525,6 +525,34 @@ def _assemble_collections(collections, refresh=False):
 
                 shutil.copy(src, dst)
                 #import epdb; epdb.st()
+
+        if v.get('units'):
+            dst = os.path.join(cdir, 'tests', 'unit')
+            if not os.path.exists(dst):
+                os.makedirs(dst)
+            for uf in v['units']:
+                fuf = os.path.join(v['basedir'], 'test', 'units', uf)
+                if os.path.isdir(fuf):
+                    fns = glob.glob('%s/*' % fuf)
+                    for fn in fns:
+                        if os.path.isdir(fn):
+                            try:
+                                shutil.copytree(fn, os.path.join(dst, os.path.basename(fn)))
+                            except Exception as e:
+                                pass
+                        else:
+                            shutil.copy(fn, os.path.join(dst, os.path.basename(fn)))
+                elif os.path.isfile(fuf):
+                    shutil.copy(fuf, os.path.join(dst, os.path.basename(fuf)))
+
+        if v.get('targets'):
+            dst = os.path.join(cdir, 'tests', 'integration', 'targets')
+            if not os.path.exists(dst):
+                os.makedirs(dst)
+            for uf in v['targets']:
+                fuf = os.path.join(v['basedir'], 'test', 'integration', 'targets', uf)
+                if not os.path.exists(os.path.join(dst, os.path.basename(fuf))):
+                    shutil.copytree(fuf, os.path.join(dst, os.path.basename(fuf)))
 
 
 def build_rpms(refresh=False, devel_only=False):
