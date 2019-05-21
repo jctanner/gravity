@@ -17,15 +17,18 @@ from sh import createrepo
 from sh import git
 
 
-DEVEL_URL = 'https://github.com/nitzmahone/ansible.git'
-DEVEL_BRANCH = 'collection_content_load'
+#DEVEL_URL = 'https://github.com/nitzmahone/ansible.git'
+DEVEL_URL = 'https://github.com/ansible/ansible.git'
+#DEVEL_BRANCH = 'collection_content_load'
+DEVEL_BRANCH = 'devel'
 
 #VARDIR = os.environ.get('GRAVITY_VAR_DIR', '/var/cache/gravity')
 VARDIR = os.environ.get('GRAVITY_VAR_DIR', 'cache')
-COLLECTION_NAMESPACE = 'builtins'
+#COLLECTION_NAMESPACE = 'builtins'
+COLLECTION_NAMESPACE = 'evicted'
 COLLECTION_PACKAGE_PREFIX = 'ansible-collection-'
 COLLECTION_PREFIX = ''
-COLLECTION_INSTALL_PATH = '/usr/share/ansible/content/ansible_collections'
+COLLECTION_INSTALL_PATH = '/usr/share/ansible/collections/ansible_collections'
 MODULE_UTIL_BLACKLIST = [
     '_text',
     'basic',
@@ -105,54 +108,55 @@ def is_current_tar(tarfile):
     return True
 
 
-def get_releases():
-    baseurl = 'https://releases.ansible.com/ansible/'
-    logger.info('fetch %s' % baseurl)
-    rr = requests.get(baseurl)
-    soup = BeautifulSoup(rr.text, u'html.parser')
-    links = soup.findAll('a')
-    hrefs = [x.attrs['href'] for x in links]
-    tarballs = [x for x in hrefs if x.endswith('tar.gz')]
-    tarballs = [x for x in tarballs if 'latest' not in x]
-    tarballs = [x for x in tarballs if 'dev' not in x]
-    tarballs = [x for x in tarballs if 'beta' not in x]
-    tarballs = [x for x in tarballs if 'alpha' not in x]
-    tarballs = [x for x in tarballs if '0a' not in x]
-    tarballs = [x for x in tarballs if '0b' not in x]
-    tarballs = [x for x in tarballs if 'rc' not in x]
-    #tarballs = [x for x in tarballs if x.startswith('ansible-2')]
-    tarballs = [x for x in tarballs if is_current_tar(x)]
-    tarballs = sorted(tarballs)
-    logger.info('%s tarballs found' % len(tarballs))
+def get_releases(refresh=False, devel_only=False):
 
     cachedir = os.path.join(VARDIR, 'releases')
     if not os.path.exists(cachedir):
         os.makedirs(cachedir)
 
-    for tb in tarballs:
-        # fetch the tarball
-        logger.info('release tarball %s' % tb)
-        url = baseurl + '/' + tb
-        dst = os.path.join(cachedir, tb)
-        if not os.path.exists(dst):
-            logger.info('fetching %s' % url)
-            rr = requests.get(url, allow_redirects=True)
-            open(dst, 'wb').write(rr.content)
+    if not devel_only:
+        baseurl = 'https://releases.ansible.com/ansible/'
+        logger.info('fetch %s' % baseurl)
+        rr = requests.get(baseurl)
+        soup = BeautifulSoup(rr.text, u'html.parser')
+        links = soup.findAll('a')
+        hrefs = [x.attrs['href'] for x in links]
+        tarballs = [x for x in hrefs if x.endswith('tar.gz')]
+        tarballs = [x for x in tarballs if 'latest' not in x]
+        tarballs = [x for x in tarballs if 'dev' not in x]
+        tarballs = [x for x in tarballs if 'beta' not in x]
+        tarballs = [x for x in tarballs if 'alpha' not in x]
+        tarballs = [x for x in tarballs if '0a' not in x]
+        tarballs = [x for x in tarballs if '0b' not in x]
+        tarballs = [x for x in tarballs if 'rc' not in x]
+        #tarballs = [x for x in tarballs if x.startswith('ansible-2')]
+        tarballs = [x for x in tarballs if is_current_tar(x)]
+        tarballs = sorted(tarballs)
+        logger.info('%s tarballs found' % len(tarballs))
 
-        # extract the tarball
-        edir = tb.replace('.tar.gz', '')
-        epath = os.path.join(cachedir, edir)
-        if not os.path.exists(epath):
-            logger.info('extracting %s' % tb)
-            cmd = 'cd %s; tar xzvf %s' % (cachedir, tb)
-            p = subprocess.Popen(
-                cmd,
-                shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-            (so, se) = p.communicate()
+        for tb in tarballs:
+            # fetch the tarball
+            logger.info('release tarball %s' % tb)
+            url = baseurl + '/' + tb
+            dst = os.path.join(cachedir, tb)
+            if not os.path.exists(dst):
+                logger.info('fetching %s' % url)
+                rr = requests.get(url, allow_redirects=True)
+                open(dst, 'wb').write(rr.content)
 
+            # extract the tarball
+            edir = tb.replace('.tar.gz', '')
+            epath = os.path.join(cachedir, edir)
+            if not os.path.exists(epath):
+                logger.info('extracting %s' % tb)
+                cmd = 'cd %s; tar xzvf %s' % (cachedir, tb)
+                p = subprocess.Popen(
+                    cmd,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                (so, se) = p.communicate()
 
     # make a devel checkout
     dpath = os.path.join(cachedir, 'devel.git')
@@ -198,7 +202,7 @@ def _index_collections(tb, releasedir, colbasedir, refresh=False):
     if not tb.endswith('tar.gz') or tb.endswith('.git'):
         istar = False
 
-    logger.info('assemble %s' % tb)
+    logger.info('index %s' % tb)
     tbbn = os.path.basename(tb)
 
     if istar:
@@ -243,6 +247,7 @@ def _index_collections(tb, releasedir, colbasedir, refresh=False):
         collections[dirn]['docs_fragments'] = []
 
     for fn in files:
+
         logger.info(fn)
         fn = fn.lstrip('./')
         dirn = os.path.dirname(fn)
@@ -333,6 +338,50 @@ def _index_collections(tb, releasedir, colbasedir, refresh=False):
         import epdb; epdb.st()
     '''
 
+    # find test(s)
+    rdir = os.path.join(releasedir, edir)
+    target_dir = os.path.join(rdir, 'test', 'integration', 'targets')
+    units_dir = os.path.join(rdir, 'test', 'units')
+
+    for k,v in collections.items():
+        units = []
+        targets = []
+        for module_filepath in v['modules']:
+            mname = os.path.basename(module_filepath)
+            mname = mname.replace('.py', '')
+            mname = mname.replace('.ps1', '')
+            mname = mname.replace('.ps2', '')
+
+            mtdir = os.path.join(target_dir, mname)
+            if os.path.exists(mtdir):
+                targets.append(mname)
+
+            mufile = 'test_' + mname + '.py'
+            cmd = 'find %s -type f -name "%s"' % (units_dir, mufile)
+            (rc, so, se) = run_command(cmd)
+            if rc == 0:
+                units.append(so.strip())
+
+        mudir = os.path.join(units_dir, 'modules', k)
+        if os.path.exists(mudir):
+            units.append(os.path.join('modules', k))
+
+        if '/' in k:
+            fudir = os.path.join(units_dir, 'module_utils', k.split('/')[1])
+            funame = os.path.join(units_dir, 'module_utils', 'test_' + k.split('/')[1] + '.py')
+        else:
+            fudir = os.path.join(units_dir, 'module_utils', k)
+            funame = os.path.join(units_dir, 'module_utils', 'test_' + k + '.py')
+        if os.path.exists(fudir):
+            units.append(fudir.replace(units_dir + '/', ''))
+        if os.path.exists(funame):
+            units.append(funame.replace(units_dir + '/', ''))
+
+        collections[k]['units'] = units[:]
+        collections[k]['targets'] = targets[:]
+
+    #import epdb; epdb.st()
+
     # store the meta ...
     jf = os.path.join(metadir, 'ansible-' + eversion + '-meta.json')
     with open(jf, 'w') as f:
@@ -368,6 +417,9 @@ def _assemble_collections(collections, refresh=False):
     releasedir = os.path.join(VARDIR, 'releases')
     colbasedir = os.path.join(VARDIR, 'collections')
     metadir = os.path.join(VARDIR, 'meta')
+    
+    if refresh and os.path.exists(colbasedir):
+        shutil.rmtree(colbasedir)
 
     # create the -versioned- collections ...
     for k,v in collections.items():
@@ -375,7 +427,10 @@ def _assemble_collections(collections, refresh=False):
             continue
         if not [x for x in v['modules'] if not x.endswith('__init__.py')]:
             continue
-        cdir = os.path.join(colbasedir, v['name'], v['version'])
+
+        #cdir = os.path.join(colbasedir, v['name'], v['version'])
+        cdir = os.path.join(colbasedir, 'ansible_collections', COLLECTION_NAMESPACE, v['name'])
+
         if refresh and os.path.exists(cdir):
             shutil.rmtree(cdir)
         if not os.path.exists(cdir):
@@ -392,6 +447,28 @@ def _assemble_collections(collections, refresh=False):
             os.makedirs(mudir)
         if not os.path.exists(dfdir):
             os.makedirs(dfdir)
+
+
+        # create the galaxy.yml
+        gdata = {
+            'namespace': COLLECTION_NAMESPACE,
+            'name': v['name'],
+            'version': v['version'],
+            'authors': None,
+            'description': None,
+            'license': None,
+            'tags': None,
+            'dependencies': None,
+            'repository': None,
+            'documentation': None,
+            'homepage': None,
+            'issues': None
+        }
+        with open(os.path.join(cdir, 'galaxy.yml'), 'w') as f:
+            f.write(yaml.dump(gdata, default_flow_style=False))
+
+
+
 
         for mn in v['modules']:
             src = os.path.join(v['basedir'], 'lib', 'ansible', 'modules', mn)
