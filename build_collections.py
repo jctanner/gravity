@@ -23,9 +23,10 @@ DEVEL_URL = 'https://github.com/ansible/ansible.git'
 DEVEL_BRANCH = 'devel'
 
 #VARDIR = os.environ.get('GRAVITY_VAR_DIR', '/var/cache/gravity')
-VARDIR = os.environ.get('GRAVITY_VAR_DIR', 'cache')
+VARDIR = os.environ.get('GRAVITY_VAR_DIR', '.cache')
 #COLLECTION_NAMESPACE = 'builtins'
-COLLECTION_NAMESPACE = 'evicted'
+#COLLECTION_NAMESPACE = 'evicted'
+COLLECTION_NAMESPACE = 'jctanner'
 COLLECTION_PACKAGE_PREFIX = 'ansible-collection-'
 COLLECTION_PREFIX = ''
 COLLECTION_INSTALL_PATH = '/usr/share/ansible/collections/ansible_collections'
@@ -35,6 +36,7 @@ MODULE_UTIL_BLACKLIST = [
     'common.collections',
     'common.dict_transformations',
     'common.removed',
+    'common.text.formatters',
     'config',
     'legacy',
     'parsing.convert_bool',
@@ -114,6 +116,20 @@ def get_releases(refresh=False, devel_only=False):
     if not os.path.exists(cachedir):
         os.makedirs(cachedir)
 
+    # make a devel checkout
+    dpath = os.path.join(cachedir, 'devel.git')
+    cmd = 'git clone %s %s' % (DEVEL_URL, dpath)
+    logger.info(cmd)
+    if not os.path.exists(dpath):
+        git.clone(DEVEL_URL, dpath)
+    if DEVEL_BRANCH:
+        (rc, so, se) = _run_command('cd %s; git branch | egrep --color=never ^\\* | head -n1' % dpath)
+        thisbranch = so.replace('*', '').strip()
+        if thisbranch != DEVEL_BRANCH:
+            logger.debug('%s != %s' % (thisbranch, DEVEL_BRANCH))
+            (rc, so, se) = _run_command('cd %s; git checkout %s' % (dpath, DEVEL_BRANCH))
+            assert rc == 0
+
     if not devel_only:
         baseurl = 'https://releases.ansible.com/ansible/'
         logger.info('fetch %s' % baseurl)
@@ -158,24 +174,10 @@ def get_releases(refresh=False, devel_only=False):
                 )
                 (so, se) = p.communicate()
 
-    # make a devel checkout
-    dpath = os.path.join(cachedir, 'devel.git')
-    cmd = 'git clone %s %s' % (DEVEL_URL, dpath)
-    logger.info(cmd)
-    if not os.path.exists(dpath):
-        git.clone(DEVEL_URL, dpath)
-    if DEVEL_BRANCH:
-        (rc, so, se) = _run_command('cd %s; git branch | egrep --color=never ^\\* | head -n1' % dpath)
-        thisbranch = so.replace('*', '').strip()
-        if thisbranch != DEVEL_BRANCH:
-            logger.debug('%s != %s' % (thisbranch, DEVEL_BRANCH))
-            (rc, so, se) = _run_command('cd %s; git checkout %s' % (dpath, DEVEL_BRANCH))
-            assert rc == 0
-
     return {}
 
 
-def index_collections(devel_only=False, refresh=False):
+def index_collections(devel_only=False, refresh=False, filters=None):
     #cachedir = os.path.join(VARDIR, 'collections')
     rpmdir = os.path.join(VARDIR, 'repos', 'rpm')
     releasedir = os.path.join(VARDIR, 'releases')
@@ -189,10 +191,10 @@ def index_collections(devel_only=False, refresh=False):
     tarballs = sorted(tarballs)
 
     for tb in tarballs:
-        _index_collections(tb, releasedir, colbasedir, refresh=refresh)
+        _index_collections(tb, releasedir, colbasedir, refresh=refresh, filters=filters)
 
 
-def _index_collections(tb, releasedir, colbasedir, refresh=False):
+def _index_collections(tb, releasedir, colbasedir, refresh=False, filters=None):
 
     metadir = os.path.join(VARDIR, 'meta')
     if not os.path.exists(metadir):
@@ -231,6 +233,16 @@ def _index_collections(tb, releasedir, colbasedir, refresh=False):
     if rc != 0:
         logger.info(se)
     files = [x.strip() for x in so.split('\n') if x.strip()]
+
+    if filters:
+        for filen in files[:]:
+            include = True
+            for filtern in filters:
+                if filtern not in filen:
+                    include = False
+                    break
+            if not include:
+                files.remove(filen)
 
     collections = {}
     for dirn in dirs:
@@ -380,7 +392,30 @@ def _index_collections(tb, releasedir, colbasedir, refresh=False):
         collections[k]['units'] = units[:]
         collections[k]['targets'] = targets[:]
 
-    #import epdb; epdb.st()
+        # look for integration target imports
+        for target in targets:
+            thistarget = os.path.join(target_dir, target)
+            cmd = 'find %s -type f -name "*.yml"' % (thistarget)
+            res = run_command(cmd)
+            yfiles = res['so'].split('\n')
+            yfiles = [x.strip() for x in yfiles if x.strip()]
+
+            for yf in yfiles:
+                with open(yf, 'r') as f:
+                    _ydata = f.read()
+                ydata = yaml.load(_ydata)
+                if not ydata:
+                    continue
+                for task in ydata:
+                    if 'include_role' in task:
+                        logger.error('INCLUDE ROLE!!!')
+                        import epdb; epdb.st()
+                    if 'import_role' in task:
+                        if 'name' in task['import_role']:
+                            if task['import_role']['name'] not in collections[k]['targets']:
+                                collections[k]['targets'].append(task['import_role']['name'])
+                        else:
+                            import epdb; epdb.st()
 
     # store the meta ...
     jf = os.path.join(metadir, 'ansible-' + eversion + '-meta.json')
@@ -389,7 +424,7 @@ def _index_collections(tb, releasedir, colbasedir, refresh=False):
 
     #import epdb; epdb.st()
 
-def assemble_collections(refresh=False, devel_only=False):
+def assemble_collections(refresh=False, devel_only=False, filters=None):
     #cachedir = os.path.join(VARDIR, 'collections')
     rpmdir = os.path.join(VARDIR, 'repos', 'rpm')
     releasedir = os.path.join(VARDIR, 'releases')
@@ -409,10 +444,10 @@ def assemble_collections(refresh=False, devel_only=False):
         with open(jf, 'r') as f:
             collections = json.loads(f.read())
 
-        _assemble_collections(collections, refresh=refresh)
+        _assemble_collections(collections, refresh=refresh, filters=filters)
 
 
-def _assemble_collections(collections, refresh=False):
+def _assemble_collections(collections, refresh=False, filters=None):
     rpmdir = os.path.join(VARDIR, 'repos', 'rpm')
     releasedir = os.path.join(VARDIR, 'releases')
     colbasedir = os.path.join(VARDIR, 'collections')
@@ -425,6 +460,16 @@ def _assemble_collections(collections, refresh=False):
     for k,v in collections.items():
         if k == '':
             continue
+
+        if filters:
+            include = True
+            for x in filters:
+                if x not in k:
+                    include = False
+                    break
+            if not include:
+                continue
+
         if not [x for x in v['modules'] if not x.endswith('__init__.py')]:
             continue
 
@@ -467,13 +512,42 @@ def _assemble_collections(collections, refresh=False):
         with open(os.path.join(cdir, 'galaxy.yml'), 'w') as f:
             f.write(yaml.dump(gdata, default_flow_style=False))
 
-
-
-
         for mn in v['modules']:
             src = os.path.join(v['basedir'], 'lib', 'ansible', 'modules', mn)
             dst = os.path.join(modir, os.path.basename(mn))
             shutil.copy(src, dst)
+
+            with open(dst, 'r') as f:
+                mdata = f.read()
+            _mdata = mdata[:]
+
+            # fix the module util paths
+            for mu in v['module_utils']:
+                if not mu:
+                    continue
+                if mu in MODULE_UTIL_BLACKLIST:
+                    continue
+
+                # ansible.module_utils.vmware
+                # ansible_collections.jctanner.cloud_vmware.module_utils.vmware
+                si = 'ansible.module_utils.%s' % mu
+                di = 'ansible_collections.%s.%s.module_utils.%s' % (COLLECTION_NAMESPACE, v['name'], mu)
+                mdata = mdata.replace(si, di)
+
+            # fix the docs fragments
+            # extends_documentation_fragment: vmware.documentation\n'
+            for df in v['docs_fragments']:
+                if not df:
+                    continue
+                if df not in mdata:
+                    continue
+                ddf = '%s.%s.%s' % (COLLECTION_NAMESPACE, v['name'], df)
+                mdata = mdata.replace(df, ddf)
+
+            if mdata != _mdata:
+                logger.info('fixing imports in %s' % dst)
+                with open(dst, 'w') as f:
+                    f.write(mdata)
 
         for mu in v['module_utils']:
             if not mu.strip():
@@ -551,8 +625,41 @@ def _assemble_collections(collections, refresh=False):
                 os.makedirs(dst)
             for uf in v['targets']:
                 fuf = os.path.join(v['basedir'], 'test', 'integration', 'targets', uf)
+                duf = os.path.join(dst, os.path.basename(fuf))
                 if not os.path.exists(os.path.join(dst, os.path.basename(fuf))):
-                    shutil.copytree(fuf, os.path.join(dst, os.path.basename(fuf)))
+                    try:
+                        shutil.copytree(fuf, duf)
+                    except Exception as e:
+                        import epdb; epdb.st()
+
+                # set namespace for all module refs
+                cmd = 'find %s -type f -name "*.yml"' % (duf)
+                res = run_command(cmd)
+                yfiles = res['so'].split('\n')
+                yfiles = [x.strip() for x in yfiles if x.strip()]
+
+                for yf in yfiles:
+                    with open(yf, 'r') as f:
+                        ydata = f.read()
+                    _ydata = ydata[:]
+
+                    for module in v['modules']:
+                        msrc = os.path.basename(module)
+                        msrc = msrc.replace('.py', '')
+                        msrc = msrc.replace('.ps1', '')
+                        msrc = msrc.replace('.ps2', '')
+
+                        mdst = '%s.%s.%s' % (COLLECTION_NAMESPACE, v['name'], msrc)
+
+                        if msrc not in ydata:
+                            continue
+
+                        ydata = ydata.replace(msrc, mdst)
+
+                    if ydata != _ydata:
+                        logger.info('fixing module calls in %s' % yf)
+                        with open(yf, 'w') as f:
+                            f.write(ydata)
 
 
 def build_rpms(refresh=False, devel_only=False):
@@ -684,23 +791,25 @@ def main():
     )
     parser.add_argument('--refresh', action='store_true')
     parser.add_argument('--devel_only', action='store_true')
+    parser.add_argument('--filter', nargs='+')
+
     args = parser.parse_args()
 
-    if args.phase in ['all', 'releases']:
+    if args.phase in ['all', 'releases', 'index', 'assemble']:
         logger.info('get releases')
         get_releases(refresh=args.refresh, devel_only=args.devel_only)
-    if args.phase in ['all', 'index']:
-        logger.info('indexing collections')
-        index_collections(refresh=args.refresh, devel_only=args.devel_only)
+    if args.phase in ['all', 'index', 'releases', 'assemble']:
+        logger.info('indexing collections', 'index', 'releases', 'assemble')
+        index_collections(refresh=args.refresh, devel_only=args.devel_only, filters=args.filter)
     if args.phase in ['all', 'assemble']:
         logger.info('assembling collections')
-        assemble_collections(refresh=args.refresh, devel_only=args.devel_only)
+        assemble_collections(refresh=args.refresh, devel_only=args.devel_only, filters=args.filter)
     #if args.phase in ['all', 'package_engine']:
     #    logger.info('building ansible minimal package')
     #    build_ansible_rpm()
     if args.phase in ['all', 'package']:
         logger.info('building packages')
-        build_rpms(refresh=args.refresh, devel_only=args.devel_only)
+        build_rpms(refresh=args.refresh, devel_only=args.devel_only, filters=args.filter)
     if args.phase in ['all', 'package', 'package_engine']:
         logger.info('build repo meta')
         build_repodata()
