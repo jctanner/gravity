@@ -410,11 +410,13 @@ def _index_collections(tb, releasedir, colbasedir, refresh=False, filters=None):
                     if 'include_role' in task:
                         logger.error('INCLUDE ROLE!!!')
                         import epdb; epdb.st()
+
                     if 'import_role' in task:
                         if 'name' in task['import_role']:
                             if task['import_role']['name'] not in collections[k]['targets']:
                                 collections[k]['targets'].append(task['import_role']['name'])
                         else:
+                            logger.error('NO NAME!!!')
                             import epdb; epdb.st()
 
     # store the meta ...
@@ -422,7 +424,6 @@ def _index_collections(tb, releasedir, colbasedir, refresh=False, filters=None):
     with open(jf, 'w') as f:
         f.write(json.dumps(collections, indent=2, sort_keys=True))
 
-    #import epdb; epdb.st()
 
 def assemble_collections(refresh=False, devel_only=False, filters=None):
     #cachedir = os.path.join(VARDIR, 'collections')
@@ -655,6 +656,10 @@ def _assemble_collections(collections, refresh=False, filters=None):
                             continue
 
                         ydata = ydata.replace(msrc, mdst)
+
+                    # fix import_role calls?
+                    #tasks = yaml.load(ydata)
+                    #import epdb; epdb.st()
 
                     if ydata != _ydata:
                         logger.info('fixing module calls in %s' % yf)
