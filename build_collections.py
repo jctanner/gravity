@@ -532,7 +532,8 @@ def _assemble_collections(collections, refresh=False, filters=None):
                 # ansible.module_utils.vmware
                 # ansible_collections.jctanner.cloud_vmware.module_utils.vmware
                 si = 'ansible.module_utils.%s' % mu
-                di = 'ansible_collections.%s.%s.module_utils.%s' % (COLLECTION_NAMESPACE, v['name'], mu)
+                #di = 'ansible_collections.%s.%s.module_utils.%s' % (COLLECTION_NAMESPACE, v['name'], mu)
+                di = 'ansible_collections.%s.%s.plugins.module_utils.%s' % (COLLECTION_NAMESPACE, v['name'], mu)
                 mdata = mdata.replace(si, di)
 
             # fix the docs fragments
@@ -652,9 +653,10 @@ def _assemble_collections(collections, refresh=False, filters=None):
 
                         mdst = '%s.%s.%s' % (COLLECTION_NAMESPACE, v['name'], msrc)
 
-                        if msrc not in ydata:
+                        if msrc not in ydata or mdst in ydata:
                             continue
 
+                        #import epdb; epdb.st()
                         ydata = ydata.replace(msrc, mdst)
 
                     # fix import_role calls?
