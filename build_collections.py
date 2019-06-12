@@ -403,21 +403,34 @@ def _index_collections(tb, releasedir, colbasedir, refresh=False, filters=None):
             for yf in yfiles:
                 with open(yf, 'r') as f:
                     _ydata = f.read()
-                ydata = yaml.load(_ydata)
+
+                try:
+                    ydata = yaml.load(_ydata.replace('!unsafe', ''))
+                except Exception as e:
+                    logger.error(e)
+                    #import epdb; epdb.st()
+                    continue
+
                 if not ydata:
                     continue
                 for task in ydata:
-                    if 'include_role' in task:
-                        logger.error('INCLUDE ROLE!!!')
-                        import epdb; epdb.st()
+                    dependency = None
+                    if 'include_role' in task or 'import_role' in task:
+                        key = None
+                        if 'include_role' in task:
+                            key = 'include_role'
+                        elif 'import_role' in task:
+                            key = 'import_role'
 
-                    if 'import_role' in task:
-                        if 'name' in task['import_role']:
-                            if task['import_role']['name'] not in collections[k]['targets']:
-                                collections[k]['targets'].append(task['import_role']['name'])
+                        if 'name' in task[key]:
+                            dependency = task[key]['name']
                         else:
                             logger.error('NO NAME!!!')
                             import epdb; epdb.st()
+
+                    if dependency:
+                        if dependency not in collections[k]['targets']:
+                            collections[k]['targets'].append(dependency)
 
     # store the meta ...
     jf = os.path.join(metadir, 'ansible-' + eversion + '-meta.json')
@@ -487,13 +500,18 @@ def _assemble_collections(collections, refresh=False, filters=None):
         dfdir = os.path.join(cdir, 'plugins', 'doc_fragments')
         if not os.path.exists(apdir):
             os.makedirs(apdir)
+        with open(os.path.join(apdir, '__init__.py'), 'w') as f:
+            f.write('')
         if not os.path.exists(modir):
             os.makedirs(modir)
+        with open(os.path.join(modir, '__init__.py'), 'w') as f:
+            f.write('')
         if not os.path.exists(mudir):
             os.makedirs(mudir)
+        with open(os.path.join(mudir, '__init__.py'), 'w') as f:
+            f.write('')
         if not os.path.exists(dfdir):
             os.makedirs(dfdir)
-
 
         # create the galaxy.yml
         gdata = {
