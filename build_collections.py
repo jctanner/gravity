@@ -35,6 +35,7 @@ MODULE_UTIL_BLACKLIST = [
     'basic',
     'common.collections',
     'common.dict_transformations',
+    'common.network',
     'common.removed',
     'common.text.formatters',
     'config',
@@ -414,6 +415,8 @@ def _index_collections(tb, releasedir, colbasedir, refresh=False, filters=None):
                 if not ydata:
                     continue
                 for task in ydata:
+                    if task is None:
+                        continue
                     dependency = None
                     if 'include_role' in task or 'import_role' in task:
                         key = None
@@ -471,9 +474,15 @@ def _assemble_collections(collections, refresh=False, filters=None):
         shutil.rmtree(colbasedir)
 
     # create the collections ...
+    assembled = []
     for k,v in collections.items():
         if k == '':
             continue
+
+        #if 'vmware' in k:
+        #    import epdb; epdb.st()
+
+        logger.debug('%s %s' % (k, filters))
 
         if filters:
             include = True
@@ -483,6 +492,9 @@ def _assemble_collections(collections, refresh=False, filters=None):
                     break
             if not include:
                 continue
+
+        #if 'vmware' in k:
+        #    import epdb; epdb.st()
 
         if not [x for x in v['modules'] if not x.endswith('__init__.py')]:
             continue
@@ -569,6 +581,7 @@ def _assemble_collections(collections, refresh=False, filters=None):
                 with open(dst, 'w') as f:
                     f.write(mdata)
 
+        import epdb; epdb.st()
         for mu in v['module_utils']:
             if not mu.strip():
                 continue
@@ -621,7 +634,7 @@ def _assemble_collections(collections, refresh=False, filters=None):
                 #import epdb; epdb.st()
 
         if v.get('units'):
-            dst = os.path.join(cdir, 'tests', 'unit')
+            dst = os.path.join(cdir, 'test', 'unit')
             if not os.path.exists(dst):
                 os.makedirs(dst)
             for uf in v['units']:
@@ -640,7 +653,7 @@ def _assemble_collections(collections, refresh=False, filters=None):
                     shutil.copy(fuf, os.path.join(dst, os.path.basename(fuf)))
 
         if v.get('targets'):
-            dst = os.path.join(cdir, 'tests', 'integration', 'targets')
+            dst = os.path.join(cdir, 'test', 'integration', 'targets')
             if not os.path.exists(dst):
                 os.makedirs(dst)
             for uf in v['targets']:
@@ -685,6 +698,11 @@ def _assemble_collections(collections, refresh=False, filters=None):
                         logger.info('fixing module calls in %s' % yf)
                         with open(yf, 'w') as f:
                             f.write(ydata)
+
+        assembled.append(k)
+
+    if not assembled:
+        logger.error('no collections assembled')
 
 
 def build_rpms(refresh=False, devel_only=False):
