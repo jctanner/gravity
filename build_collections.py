@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup
 from logzero import logger
 from sh import createrepo
 from sh import git
+from sh import find as shfind
 
 
 #DEVEL_URL = 'https://github.com/nitzmahone/ansible.git'
@@ -53,8 +54,68 @@ MODULE_UTIL_BLACKLIST = [
 ]
 
 
+def clean_extra_lines(rawtext):
+    lines = rawtext.split('\n')
+
+    imports_start = None
+    imports_stop = None
+    for idx,x in enumerate(lines):
+        if imports_start is None:
+            if x.startswith('from ') and not 'absolute_import' in x:
+                imports_start = idx
+                continue
+
+        if not x:
+            continue
+
+        if x.startswith('from '):
+            continue
+
+        if imports_start and imports_stop is None:
+            if x[0].isalnum():
+                imports_stop = idx
+                break
+
+    empty_lines = [x for x in range(imports_start, imports_stop)]
+    empty_lines = [x for x in empty_lines if not lines[x].strip()]
+
+    if not empty_lines:
+        return rawtext
+
+    if len(empty_lines) == 1:
+        return rawtext
+
+    # keep 2 empty lines between imports and definitions
+    if len(empty_lines) == 2 and (empty_lines[-1] - empty_lines[-2] == 1):
+        return rawtext
+
+    print(lines[imports_start:imports_stop])
+
+    while empty_lines:
+        try:
+            print('DELETING: %s' % lines[empty_lines[0]])
+        except IndexError as e:
+            print(e)
+            import epdb; epdb.st()
+        del lines[empty_lines[0]]
+        del empty_lines[0]
+        empty_lines = [x-1 for x in empty_lines]
+        if [x for x in empty_lines if x <= 0]:
+            break
+
+        if len(empty_lines) <= 2:
+            break
+
+        #import epdb; epdb.st()
+
+    rawtext = '\n'.join(lines)
+    return rawtext
+
+
 def _run_command(cmd):
     logger.debug(cmd)
+    if not isinstance(cmd, bytes):
+        cmd = cmd.encode('utf-8')
     p = subprocess.Popen(
         cmd,
         shell=True,
@@ -64,6 +125,7 @@ def _run_command(cmd):
     (so, se) = p.communicate()
     so = so.decode('utf-8')
     se = se.decode('utf-8')
+
     return (p.returncode, so, se)
 
 
@@ -178,7 +240,7 @@ def get_releases(refresh=False, devel_only=False):
     return {}
 
 
-def index_collections(devel_only=False, refresh=False, filters=None):
+def index_collections(devel_only=False, refresh=False, filters=None, force=False):
     #cachedir = os.path.join(VARDIR, 'collections')
     rpmdir = os.path.join(VARDIR, 'repos', 'rpm')
     releasedir = os.path.join(VARDIR, 'releases')
@@ -371,13 +433,28 @@ def _index_collections(tb, releasedir, colbasedir, refresh=False, filters=None):
 
             mufile = 'test_' + mname + '.py'
             cmd = 'find %s -type f -name "%s"' % (units_dir, mufile)
-            (rc, so, se) = run_command(cmd)
-            if rc == 0:
-                units.append(so.strip())
+            res = run_command(cmd)
+            if res['rc'] == 0:
+                units.append(res['so'].strip())
 
         mudir = os.path.join(units_dir, 'modules', k)
         if os.path.exists(mudir):
-            units.append(os.path.join('modules', k))
+            thisdir = os.path.join('modules', k)
+            units.append(thisdir)
+
+            cmd = 'find %s -type f -name "*.py"' % (mudir)
+            res = run_command(cmd)
+            unit_files = [x.strip() for x in res['so'].split('\n') if x.strip()]
+            for _uf in unit_files:
+                with open(_uf, 'r') as f:
+                    uflines = f.readlines()
+                ufdata = '\n'.join(uflines)
+
+                # need the conftest file for these tests
+                # .cache/releases/devel.git/test/units/modules/conftest.py
+                if 'patch_ansible_module' in ufdata:
+                    units.append('modules/conftest.py')
+                    #import epdb; epdb.st()
 
         if '/' in k:
             fudir = os.path.join(units_dir, 'module_utils', k.split('/')[1])
@@ -390,8 +467,8 @@ def _index_collections(tb, releasedir, colbasedir, refresh=False, filters=None):
         if os.path.exists(funame):
             units.append(funame.replace(units_dir + '/', ''))
 
-        collections[k]['units'] = units[:]
-        collections[k]['targets'] = targets[:]
+        collections[k]['units'] = sorted(set([x for x in units[:] if x]))
+        collections[k]['targets'] = sorted(set([x for x in targets[:] if x]))
 
         # look for integration target imports
         for target in targets:
@@ -552,6 +629,9 @@ def _assemble_collections(collections, refresh=False, filters=None):
                 mdata = f.read()
             _mdata = mdata[:]
 
+            # were any lines nullified?
+            extralines = False
+
             # fix the module util paths
             for mu in v['module_utils']:
                 if not mu:
@@ -564,7 +644,101 @@ def _assemble_collections(collections, refresh=False, filters=None):
                 si = 'ansible.module_utils.%s' % mu
                 #di = 'ansible_collections.%s.%s.module_utils.%s' % (COLLECTION_NAMESPACE, v['name'], mu)
                 di = 'ansible_collections.%s.%s.plugins.module_utils.%s' % (COLLECTION_NAMESPACE, v['name'], mu)
-                mdata = mdata.replace(si, di)
+
+                #mdata = mdata.replace(si, di)
+                mdlines = mdata.split('\n')
+                for idx,x in enumerate(mdlines):
+                    #if not x.startswith('from ') or x.endswith('('):
+                    if not x.startswith('from '):
+                        continue
+                    if si in x:
+                        newx = x.replace(si, di)
+                        if len(newx) < 160 and ('(' not in x) and '\\' not in x:
+                            mdlines[idx] = newx
+                            continue
+
+                        if '(' in x and ')' not in x:
+                            x = ''
+                            tonull = []
+                            for thisx in range(idx, len(mdlines)):
+                                x += mdlines[thisx]
+                                tonull.append(thisx)
+                                if ')' in mdlines[thisx]:
+                                    break
+
+                            if len(tonull) > 1:
+                                extralines = True
+                            for tn in tonull:
+                                mdlines[tn] = ''
+
+                        if '\\' in x:
+                            x = ''
+                            tonull = []
+                            for thisx in range(idx, len(mdlines)):
+
+                                if thisx != idx and mdlines[thisx].startswith('from '):
+                                    break
+
+                                print('add %s' % mdlines[thisx])
+                                x += mdlines[thisx]
+                                tonull.append(thisx)
+
+
+                                if thisx != idx and (not mdlines[thisx].strip() or mdlines[thisx][0].isalnum()):
+                                    break
+                                print('add %s' % mdlines[thisx])
+                                #x += mdlines[thisx]
+                                #tonull.append(thisx)
+
+                            #print(tonull)
+                            #import epdb; epdb.st()
+                            if len(tonull) > 1:
+                                extralines = True
+                            for tn in tonull:
+                                mdlines[tn] = ''
+
+                            #print(tonull)
+                            #import epdb; epdb.st()
+
+                        #if len(newx) < 160:
+                        #    mdlines[idx] = newx
+                        #    continue
+
+                        # we have to use newlined imports for those that are >160 chars
+                        ximports = x[:]
+
+                        #if '(' in x and ')' not in x:
+                        #    import epdb; epdb.st()
+
+                        if si in ximports:
+                            ximports = ximports.replace(si, '')
+                        elif di in ximports:
+                            ximports = ximports.replace(di, '')
+                        ximports = ximports.replace('from', '')
+                        ximports = ximports.replace('import', '')
+                        ximports = ximports.replace('\\', '')
+                        ximports = ximports.replace('(', '')
+                        ximports = ximports.replace(')', '')
+                        ximports = ximports.split(',')
+                        ximports = [x.strip() for x in ximports if x.strip()]
+                        ximports = sorted(set(ximports))
+
+                        newx = 'from %s import (\n' % di
+                        for xi in ximports:
+                            newx += '    ' + xi + ',\n'
+                        newx += ')'
+                        #import epdb; epdb.st()
+                        mdlines[idx] = newx
+
+                mdata = '\n'.join(mdlines)
+
+            # FIXME: clean too many empty lines
+            if extralines:
+                mdata = clean_extra_lines(mdata)
+                #import epdb; epdb.st()
+
+            #if dst.endswith('vca_fw.py'):
+            #    import epdb; epdb.st()
 
             # fix the docs fragments
             # extends_documentation_fragment: vmware.documentation\n'
@@ -574,14 +748,20 @@ def _assemble_collections(collections, refresh=False, filters=None):
                 if df not in mdata:
                     continue
                 ddf = '%s.%s.%s' % (COLLECTION_NAMESPACE, v['name'], df)
-                mdata = mdata.replace(df, ddf)
+                #import epdb; epdb.st()
+                mdata = mdata.replace(
+                    'extends_documentation_fragment: ' + df,
+                    'extends_documentation_fragment: ' + ddf,
+                )
+
+            #if dst.endswith('vca_fw.py'):
+            #    import epdb; epdb.st()
 
             if mdata != _mdata:
                 logger.info('fixing imports in %s' % dst)
                 with open(dst, 'w') as f:
                     f.write(mdata)
 
-        import epdb; epdb.st()
         for mu in v['module_utils']:
             if not mu.strip():
                 continue
@@ -634,12 +814,18 @@ def _assemble_collections(collections, refresh=False, filters=None):
                 #import epdb; epdb.st()
 
         if v.get('units'):
+
+            # need to fix these imports in the unit tests
+            module_names = [os.path.basename(x).replace('.py', '') for x in v['modules']]
+
             dst = os.path.join(cdir, 'test', 'unit')
             if not os.path.exists(dst):
                 os.makedirs(dst)
             for uf in v['units']:
                 fuf = os.path.join(v['basedir'], 'test', 'units', uf)
                 if os.path.isdir(fuf):
+                    #import epdb; epdb.st()
+
                     fns = glob.glob('%s/*' % fuf)
                     for fn in fns:
                         if os.path.isdir(fn):
@@ -648,9 +834,44 @@ def _assemble_collections(collections, refresh=False, filters=None):
                             except Exception as e:
                                 pass
                         else:
-                            shutil.copy(fn, os.path.join(dst, os.path.basename(fn)))
+                           shutil.copy(fn, os.path.join(dst, os.path.basename(fn)))
+
                 elif os.path.isfile(fuf):
-                    shutil.copy(fuf, os.path.join(dst, os.path.basename(fuf)))
+                    fuf_dst = os.path.join(dst, os.path.basename(fuf))
+                    shutil.copy(fuf, fuf_dst)
+
+                cmd = 'find %s -type f -name "*.py"' % (dst)
+                res = run_command(cmd)
+                unit_files = sorted([x.strip() for x in res['so'].split('\n') if x.strip()])
+
+                for unit_file in unit_files:
+                    # fix the module import paths to be relative
+                    #   from ansible.modules.cloud.vmware import vmware_guest
+                    #   from ...plugins.modules import vmware_guest
+
+                    depth = unit_file.replace(cdir, '')
+                    depth = depth.lstrip('/')
+                    depth = os.path.dirname(depth)
+                    depth = depth.split('/')
+                    rel_path = '.'.join(['' for x in range(-1, len(depth))])
+                    
+                    with open(unit_file, 'r') as f:
+                        unit_lines = f.readlines()
+                    unit_lines = [x.rstrip() for x in unit_lines]
+
+                    changed = False
+
+                    for module in module_names:
+                        for li,line in enumerate(unit_lines):
+                            if line.startswith('from ') and line.endswith(module):
+                                unit_lines[li] = 'from %s.plugins.modules import %s' % (rel_path, module)
+                                changed = True
+
+                    if changed:
+                        with open(unit_file, 'w') as f:
+                            f.write('\n'.join(unit_lines))
+                    #import epdb; epdb.st()
+
 
         if v.get('targets'):
             dst = os.path.join(cdir, 'test', 'integration', 'targets')
@@ -833,8 +1054,9 @@ def main():
         default='all'
     )
     parser.add_argument('--refresh', action='store_true')
-    parser.add_argument('--devel_only', action='store_true')
+    parser.add_argument('--devel', dest='devel_only', action='store_true')
     parser.add_argument('--filter', nargs='+')
+    #parser.add_argument('--force', nargs='+')
 
     args = parser.parse_args()
 
