@@ -28,6 +28,7 @@ VARDIR = os.environ.get('GRAVITY_VAR_DIR', '.cache')
 #COLLECTION_NAMESPACE = 'builtins'
 #COLLECTION_NAMESPACE = 'evicted'
 COLLECTION_NAMESPACE = 'jctanner'
+#COLLECTION_NAMESPACE = 'ansible'
 COLLECTION_PACKAGE_PREFIX = 'ansible-collection-'
 COLLECTION_PREFIX = ''
 COLLECTION_INSTALL_PATH = '/usr/share/ansible/collections/ansible_collections'
@@ -760,7 +761,7 @@ def _assemble_collections(collections, refresh=False, filters=None):
             if mdata != _mdata:
                 logger.info('fixing imports in %s' % dst)
                 with open(dst, 'w') as f:
-                    f.write(mdata)
+                    f.write(mdata.rstrip() + '\n')
 
         for mu in v['module_utils']:
             if not mu.strip():
@@ -869,7 +870,7 @@ def _assemble_collections(collections, refresh=False, filters=None):
 
                     if changed:
                         with open(unit_file, 'w') as f:
-                            f.write('\n'.join(unit_lines))
+                            f.write('\n'.join(unit_lines) + '\n')
                     #import epdb; epdb.st()
 
 
@@ -893,23 +894,26 @@ def _assemble_collections(collections, refresh=False, filters=None):
                 yfiles = [x.strip() for x in yfiles if x.strip()]
 
                 for yf in yfiles:
+
                     with open(yf, 'r') as f:
                         ydata = f.read()
                     _ydata = ydata[:]
 
-                    for module in v['modules']:
-                        msrc = os.path.basename(module)
-                        msrc = msrc.replace('.py', '')
-                        msrc = msrc.replace('.ps1', '')
-                        msrc = msrc.replace('.ps2', '')
+                    if os.path.basename(os.path.dirname(yf)) == 'tasks':
 
-                        mdst = '%s.%s.%s' % (COLLECTION_NAMESPACE, v['name'], msrc)
+                        for module in v['modules']:
+                            msrc = os.path.basename(module)
+                            msrc = msrc.replace('.py', '')
+                            msrc = msrc.replace('.ps1', '')
+                            msrc = msrc.replace('.ps2', '')
 
-                        if msrc not in ydata or mdst in ydata:
-                            continue
+                            mdst = '%s.%s.%s' % (COLLECTION_NAMESPACE, v['name'], msrc)
 
-                        #import epdb; epdb.st()
-                        ydata = ydata.replace(msrc, mdst)
+                            if msrc not in ydata or mdst in ydata:
+                                continue
+
+                            #import epdb; epdb.st()
+                            ydata = ydata.replace(msrc+':', mdst+':')
 
                     # fix import_role calls?
                     #tasks = yaml.load(ydata)
